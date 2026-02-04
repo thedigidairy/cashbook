@@ -204,15 +204,15 @@
     <div class="card totals" id="totals">
       <div>
         Total Income
-        <span id="total-income">$0.00</span>
+        <span id="total-income">₹0</span>
       </div>
       <div>
         Total Expense
-        <span id="total-expense">$0.00</span>
+        <span id="total-expense">₹0</span>
       </div>
       <div>
         Current Balance
-        <span id="current-balance">$0.00</span>
+        <span id="current-balance">₹0</span>
       </div>
     </div>
 
@@ -222,9 +222,9 @@
           <tr>
             <th>Date</th>
             <th>Description</th>
-            <th>Income</th>
-            <th>Expense</th>
-            <th>Running Balance</th>
+            <th>Income (₹)</th>
+            <th>Expense (₹)</th>
+            <th>Running Balance (₹)</th>
           </tr>
         </thead>
         <tbody id="entries-body"></tbody>
@@ -246,9 +246,10 @@
     const totalExpenseEl = document.getElementById("total-expense");
     const currentBalanceEl = document.getElementById("current-balance");
 
-    const moneyFormat = new Intl.NumberFormat("en-US", {
+    const moneyFormat = new Intl.NumberFormat("en-IN", {
       style: "currency",
-      currency: "USD",
+      currency: "INR",
+      maximumFractionDigits: 0,
     });
 
     function loadEntries() {
