@@ -196,22 +196,22 @@
           </select>
         </div>
         <div>
-          <button type="submit">Add Entry</button>
+          <button type="submit" id="submit-button">Add Entry</button>
         </div>
       </form>
     </div>
 
     <div class="card totals" id="totals">
       <div>
-        Total Income
+        Total Income (₹)
         <span id="total-income">₹0</span>
       </div>
       <div>
-        Total Expense
+        Total Expense (₹)
         <span id="total-expense">₹0</span>
       </div>
       <div>
-        Current Balance
+        Current Balance (₹)
         <span id="current-balance">₹0</span>
       </div>
     </div>
@@ -225,6 +225,7 @@
             <th>Income (₹)</th>
             <th>Expense (₹)</th>
             <th>Running Balance (₹)</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="entries-body"></tbody>
@@ -242,9 +243,11 @@
     const typeInput = document.getElementById("entry-type");
     const entriesBody = document.getElementById("entries-body");
     const emptyState = document.getElementById("empty-state");
+    const submitButton = document.getElementById("submit-button");
     const totalIncomeEl = document.getElementById("total-income");
     const totalExpenseEl = document.getElementById("total-expense");
     const currentBalanceEl = document.getElementById("current-balance");
+    let editIndex = null;
 
     const moneyFormat = new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -281,7 +284,7 @@
         emptyState.style.display = "none";
       }
 
-      entries.forEach((entry) => {
+      entries.forEach((entry, index) => {
         const amount = Number(entry.amount);
         if (entry.type === "income") {
           runningBalance += amount;
@@ -300,6 +303,10 @@
           <td class="${runningBalance >= 0 ? "balance-positive" : "balance-negative"}">
             ${moneyFormat.format(runningBalance)}
           </td>
+          <td>
+            <button type="button" data-action="edit" data-index="${index}">Edit</button>
+            <button type="button" data-action="delete" data-index="${index}">Delete</button>
+          </td>
         `;
         entriesBody.appendChild(row);
       });
@@ -312,6 +319,13 @@
     function setToday() {
       const today = new Date().toISOString().split("T")[0];
       dateInput.value = today;
+    }
+
+    function resetForm() {
+      editIndex = null;
+      submitButton.textContent = "Add Entry";
+      form.reset();
+      setToday();
     }
 
     form.addEventListener("submit", (event) => {
@@ -334,18 +348,64 @@
       }
 
       const entries = loadEntries();
-      entries.push({
+      const entryPayload = {
         date,
         description,
         amount,
         type,
-      });
+      };
+
+      if (editIndex === null) {
+        entries.push(entryPayload);
+      } else {
+        entries[editIndex] = entryPayload;
+      }
       saveEntries(entries);
       render(entries);
 
-      amountInput.value = "";
-      descInput.value = "";
+      resetForm();
       descInput.focus();
+    });
+
+    entriesBody.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) {
+        return;
+      }
+
+      const action = button.dataset.action;
+      const index = Number(button.dataset.index);
+      if (Number.isNaN(index)) {
+        return;
+      }
+
+      const entries = loadEntries();
+      if (!entries[index]) {
+        return;
+      }
+
+      if (action === "edit") {
+        const entry = entries[index];
+        editIndex = index;
+        dateInput.value = entry.date;
+        descInput.value = entry.description;
+        amountInput.value = entry.amount;
+        typeInput.value = entry.type;
+        submitButton.textContent = "Save Entry";
+        descInput.focus();
+        return;
+      }
+
+      if (action === "delete") {
+        entries.splice(index, 1);
+        if (editIndex === index) {
+          resetForm();
+        } else if (editIndex !== null && index < editIndex) {
+          editIndex -= 1;
+        }
+        saveEntries(entries);
+        render(entries);
+      }
     });
 
     setToday();
