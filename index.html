@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cash Book</title>
+  <style>
+    :root {
+      --bg: #f2f2f2;
+      --card: #ffffff;
+      --text: #222222;
+      --muted: #555555;
+      --border: #d9d9d9;
+      --accent: #2b6cb0;
+      --income: #2f855a;
+      --expense: #c53030;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+      font-size: 18px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 16px;
+      font-size: 32px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+
+    input,
+    select,
+    button {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 18px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    input:focus,
+    select:focus,
+    button:focus {
+      outline: 3px solid rgba(43, 108, 176, 0.2);
+      outline-offset: 1px;
+    }
+
+    button {
+      background: var(--accent);
+      color: #fff;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #245c98;
+    }
+
+    .totals {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      font-weight: bold;
+      font-size: 20px;
+    }
+
+    .totals span {
+      display: block;
+      font-size: 16px;
+      font-weight: normal;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 16px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--border);
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background: #f8f8f8;
+      font-size: 17px;
+    }
+
+    .amount-income {
+      color: var(--income);
+      font-weight: bold;
+    }
+
+    .amount-expense {
+      color: var(--expense);
+      font-weight: bold;
+    }
+
+    .balance-positive {
+      color: var(--income);
+      font-weight: bold;
+    }
+
+    .balance-negative {
+      color: var(--expense);
+      font-weight: bold;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      padding: 12px;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        font-size: 16px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .totals {
+        font-size: 18px;
+      }
+
+      table {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Cash Book</h1>
+
+    <div class="card">
+      <form id="entry-form" class="form-grid">
+        <div>
+          <label for="entry-date">Date</label>
+          <input type="date" id="entry-date" required />
+        </div>
+        <div>
+          <label for="entry-desc">Description / Note</label>
+          <input type="text" id="entry-desc" placeholder="e.g., Groceries" required />
+        </div>
+        <div>
+          <label for="entry-amount">Amount</label>
+          <input type="number" id="entry-amount" min="0" step="0.01" placeholder="0.00" required />
+        </div>
+        <div>
+          <label for="entry-type">Type</label>
+          <select id="entry-type" required>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </div>
+        <div>
+          <button type="submit">Add Entry</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card totals" id="totals">
+      <div>
+        Total Income
+        <span id="total-income">$0.00</span>
+      </div>
+      <div>
+        Total Expense
+        <span id="total-expense">$0.00</span>
+      </div>
+      <div>
+        Current Balance
+        <span id="current-balance">$0.00</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <table aria-label="Cash book entries">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Income</th>
+            <th>Expense</th>
+            <th>Running Balance</th>
+          </tr>
+        </thead>
+        <tbody id="entries-body"></tbody>
+      </table>
+      <div id="empty-state" class="empty-state">No entries yet. Add your first entry above.</div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "cashbookEntries";
+    const form = document.getElementById("entry-form");
+    const dateInput = document.getElementById("entry-date");
+    const descInput = document.getElementById("entry-desc");
+    const amountInput = document.getElementById("entry-amount");
+    const typeInput = document.getElementById("entry-type");
+    const entriesBody = document.getElementById("entries-body");
+    const emptyState = document.getElementById("empty-state");
+    const totalIncomeEl = document.getElementById("total-income");
+    const totalExpenseEl = document.getElementById("total-expense");
+    const currentBalanceEl = document.getElementById("current-balance");
+
+    const moneyFormat = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    });
+
+    function loadEntries() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return [];
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveEntries(entries) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    }
+
+    function render(entries) {
+      entriesBody.innerHTML = "";
+      let runningBalance = 0;
+      let totalIncome = 0;
+      let totalExpense = 0;
+
+      if (entries.length === 0) {
+        emptyState.style.display = "block";
+      } else {
+        emptyState.style.display = "none";
+      }
+
+      entries.forEach((entry) => {
+        const amount = Number(entry.amount);
+        if (entry.type === "income") {
+          runningBalance += amount;
+          totalIncome += amount;
+        } else {
+          runningBalance -= amount;
+          totalExpense += amount;
+        }
+
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${entry.date}</td>
+          <td>${entry.description}</td>
+          <td class="amount-income">${entry.type === "income" ? moneyFormat.format(amount) : ""}</td>
+          <td class="amount-expense">${entry.type === "expense" ? moneyFormat.format(amount) : ""}</td>
+          <td class="${runningBalance >= 0 ? "balance-positive" : "balance-negative"}">
+            ${moneyFormat.format(runningBalance)}
+          </td>
+        `;
+        entriesBody.appendChild(row);
+      });
+
+      totalIncomeEl.textContent = moneyFormat.format(totalIncome);
+      totalExpenseEl.textContent = moneyFormat.format(totalExpense);
+      currentBalanceEl.textContent = moneyFormat.format(runningBalance);
+    }
+
+    function setToday() {
+      const today = new Date().toISOString().split("T")[0];
+      dateInput.value = today;
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const date = dateInput.value.trim();
+      const description = descInput.value.trim();
+      const amountValue = amountInput.value;
+      const type = typeInput.value;
+
+      if (!date || !description || !amountValue) {
+        alert("Please fill out date, description, and amount.");
+        return;
+      }
+
+      const amount = Number(amountValue);
+      if (Number.isNaN(amount) || amount <= 0) {
+        alert("Please enter a valid amount greater than zero.");
+        return;
+      }
+
+      const entries = loadEntries();
+      entries.push({
+        date,
+        description,
+        amount,
+        type,
+      });
+      saveEntries(entries);
+      render(entries);
+
+      amountInput.value = "";
+      descInput.value = "";
+      descInput.focus();
+    });
+
+    setToday();
+    const initialEntries = loadEntries();
+    render(initialEntries);
+  </script>
+</body>
+</html>
