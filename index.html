@@ -252,8 +252,46 @@
     const moneyFormat = new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
     });
+
+    function formatDateForDisplay(isoDate) {
+      if (!isoDate || typeof isoDate !== "string") {
+        return "";
+      }
+      const [year, month, day] = isoDate.split("-");
+      if (!year || !month || !day) {
+        return isoDate;
+      }
+      return `${day}-${month}-${year}`;
+    }
+
+    function parseAmountToPaise(amountValue) {
+      if (typeof amountValue !== "string") {
+        return null;
+      }
+      const trimmed = amountValue.trim();
+      if (!trimmed) {
+        return null;
+      }
+      const match = /^\d+(?:\.(\d{0,2}))?$/.exec(trimmed);
+      if (!match) {
+        return null;
+      }
+      const [wholePart, fractionPart = ""] = trimmed.split(".");
+      const fractionPadded = (fractionPart + "00").slice(0, 2);
+      return Number(wholePart) * 100 + Number(fractionPadded);
+    }
+
+    function formatMoneyFromPaise(paise) {
+      return moneyFormat.format(paise / 100);
+    }
+
+    function getEntryPaise(entry) {
+      const paise = parseAmountToPaise(String(entry.amount));
+      return paise === null ? 0 : paise;
+    }
 
     function loadEntries() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -274,9 +312,9 @@
 
     function render(entries) {
       entriesBody.innerHTML = "";
-      let runningBalance = 0;
-      let totalIncome = 0;
-      let totalExpense = 0;
+      let runningBalancePaise = 0;
+      let totalIncomePaise = 0;
+      let totalExpensePaise = 0;
 
       if (entries.length === 0) {
         emptyState.style.display = "block";
@@ -285,23 +323,23 @@
       }
 
       entries.forEach((entry, index) => {
-        const amount = Number(entry.amount);
+        const amountPaise = getEntryPaise(entry);
         if (entry.type === "income") {
-          runningBalance += amount;
-          totalIncome += amount;
+          runningBalancePaise += amountPaise;
+          totalIncomePaise += amountPaise;
         } else {
-          runningBalance -= amount;
-          totalExpense += amount;
+          runningBalancePaise -= amountPaise;
+          totalExpensePaise += amountPaise;
         }
 
         const row = document.createElement("tr");
         row.innerHTML = `
-          <td>${entry.date}</td>
+          <td>${formatDateForDisplay(entry.date)}</td>
           <td>${entry.description}</td>
-          <td class="amount-income">${entry.type === "income" ? moneyFormat.format(amount) : ""}</td>
-          <td class="amount-expense">${entry.type === "expense" ? moneyFormat.format(amount) : ""}</td>
-          <td class="${runningBalance >= 0 ? "balance-positive" : "balance-negative"}">
-            ${moneyFormat.format(runningBalance)}
+          <td class="amount-income">${entry.type === "income" ? formatMoneyFromPaise(amountPaise) : ""}</td>
+          <td class="amount-expense">${entry.type === "expense" ? formatMoneyFromPaise(amountPaise) : ""}</td>
+          <td class="${runningBalancePaise >= 0 ? "balance-positive" : "balance-negative"}">
+            ${formatMoneyFromPaise(runningBalancePaise)}
           </td>
           <td>
             <button type="button" data-action="edit" data-index="${index}">Edit</button>
@@ -311,9 +349,9 @@
         entriesBody.appendChild(row);
       });
 
-      totalIncomeEl.textContent = moneyFormat.format(totalIncome);
-      totalExpenseEl.textContent = moneyFormat.format(totalExpense);
-      currentBalanceEl.textContent = moneyFormat.format(runningBalance);
+      totalIncomeEl.textContent = formatMoneyFromPaise(totalIncomePaise);
+      totalExpenseEl.textContent = formatMoneyFromPaise(totalExpensePaise);
+      currentBalanceEl.textContent = formatMoneyFromPaise(runningBalancePaise);
     }
 
     function setToday() {
@@ -341,8 +379,8 @@
         return;
       }
 
-      const amount = Number(amountValue);
-      if (Number.isNaN(amount) || amount <= 0) {
+      const amountPaise = parseAmountToPaise(amountValue);
+      if (amountPaise === null || amountPaise <= 0) {
         alert("Please enter a valid amount greater than zero.");
         return;
       }
@@ -351,7 +389,7 @@
       const entryPayload = {
         date,
         description,
-        amount,
+        amount: amountValue,
         type,
       };
 
