@@ -203,26 +203,34 @@
     <div class="card">
       <form id="entry-form" class="form-grid">
         <div>
-          <label for="entry-date">Date</label>
-          <input type="date" id="entry-date" required />
-        </div>
-        <div>
-          <label for="entry-desc">Description / Note</label>
-          <input type="text" id="entry-desc" placeholder="e.g., Groceries" required />
-        </div>
-        <div>
-          <label for="entry-amount">Amount</label>
-          <input type="number" id="entry-amount" min="0" step="0.01" placeholder="0.00" required />
-        </div>
-        <div>
-          <label for="entry-type">Type</label>
-          <select id="entry-type" required>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
+          <label for="language-select">Language</label>
+          <select id="language-select" aria-label="Language selection">
+            <option value="en">English</option>
+            <option value="te">తెలుగు</option>
+            <option value="hi">हिंदी</option>
           </select>
         </div>
         <div>
-          <button type="submit" id="submit-button">Add Entry</button>
+          <label for="entry-date" id="label-date">Date</label>
+          <input type="date" id="entry-date" required />
+        </div>
+        <div>
+          <label for="entry-desc" id="label-desc">Description / Note</label>
+          <input type="text" id="entry-desc" placeholder="e.g., Groceries" required />
+        </div>
+        <div>
+          <label for="entry-amount" id="label-amount">Amount</label>
+          <input type="number" id="entry-amount" min="0" step="0.01" placeholder="0.00" required />
+        </div>
+        <div>
+          <label for="entry-type" id="label-type">Type</label>
+          <select id="entry-type" required>
+            <option value="income" id="type-income-option">Income</option>
+            <option value="expense" id="type-expense-option">Expense</option>
+          </select>
+        </div>
+        <div>
+          <button type="submit" id="submit-button">Save Entry</button>
         </div>
         <div>
           <button type="button" id="voice-input-button" class="voice-button">🎤 Voice Input</button>
@@ -232,15 +240,15 @@
 
     <div class="card totals" id="totals">
       <div>
-        Total Income (₹)
+        <span id="label-total-income-text">Total Income</span> (₹)
         <span id="total-income">₹0</span>
       </div>
       <div>
-        Total Expense (₹)
+        <span id="label-total-expense-text">Total Expense</span> (₹)
         <span id="total-expense">₹0</span>
       </div>
       <div>
-        Current Balance (₹)
+        <span id="label-current-balance-text">Current Balance</span> (₹)
         <span id="current-balance">₹0</span>
       </div>
     </div>
@@ -277,9 +285,104 @@
     const totalExpenseEl = document.getElementById("total-expense");
     const currentBalanceEl = document.getElementById("current-balance");
     const voiceInputButton = document.getElementById("voice-input-button");
+    const languageSelect = document.getElementById("language-select");
+    const labelDate = document.getElementById("label-date");
+    const labelDesc = document.getElementById("label-desc");
+    const labelAmount = document.getElementById("label-amount");
+    const labelType = document.getElementById("label-type");
+    const typeIncomeOption = document.getElementById("type-income-option");
+    const typeExpenseOption = document.getElementById("type-expense-option");
+    const labelTotalIncomeText = document.getElementById("label-total-income-text");
+    const labelTotalExpenseText = document.getElementById("label-total-expense-text");
+    const labelCurrentBalanceText = document.getElementById("label-current-balance-text");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let editIndex = null;
     let recognition = null;
+    let currentLanguage = "en";
+
+    const languageConfig = {
+      en: {
+        ui: {
+          date: "Date",
+          description: "Description / Note",
+          amount: "Amount",
+          type: "Type",
+          income: "Income",
+          expense: "Expense",
+          saveEntry: "Save Entry",
+          totalIncome: "Total Income",
+          totalExpense: "Total Expense",
+          currentBalance: "Current Balance",
+          voiceInput: "🎤 Voice Input",
+          descPlaceholder: "e.g., Groceries",
+          unsupportedSpeech: "Voice input is not supported in this browser. Please enter details manually.",
+          missingFields: "Please fill out date, description, and amount.",
+          invalidAmount: "Please enter a valid amount greater than zero.",
+        },
+        speechLang: "en-IN",
+        keywords: {
+          date: ["date"],
+          description: ["description", "note"],
+          amount: ["amount"],
+          income: ["income"],
+          expense: ["expense"],
+        },
+      },
+      te: {
+        ui: {
+          date: "తేదీ",
+          description: "వివరణ / గమనిక",
+          amount: "మొత్తం",
+          type: "రకం",
+          income: "ఆదాయం",
+          expense: "ఖర్చు",
+          saveEntry: "సేవ్ ఎంట్రీ",
+          totalIncome: "మొత్తం ఆదాయం",
+          totalExpense: "మొత్తం ఖర్చు",
+          currentBalance: "ప్రస్తుత నిల్వ",
+          voiceInput: "🎤 వాయిస్ ఇన్పుట్",
+          descPlaceholder: "ఉదా., కిరాణా",
+          unsupportedSpeech: "ఈ బ్రౌజర్‌లో వాయిస్ ఇన్పుట్‌కు మద్దతు లేదు. దయచేసి వివరాలను మాన్యువల్‌గా నమోదు చేయండి.",
+          missingFields: "దయచేసి తేదీ, వివరణ మరియు మొత్తాన్ని నమోదు చేయండి.",
+          invalidAmount: "దయచేసి సున్నా కంటే ఎక్కువ చెల్లుబాటు అయ్యే మొత్తాన్ని నమోదు చేయండి.",
+        },
+        speechLang: "te-IN",
+        keywords: {
+          date: ["తేదీ", "డేట్"],
+          description: ["వివరణ", "గమనిక"],
+          amount: ["మొత్తం", "అమౌంట్"],
+          income: ["ఆదాయం", "ఇంకమ్"],
+          expense: ["ఖర్చు", "ఎక్స్‌పెన్స్"],
+        },
+      },
+      hi: {
+        ui: {
+          date: "तारीख",
+          description: "विवरण / नोट",
+          amount: "राशि",
+          type: "प्रकार",
+          income: "आय",
+          expense: "खर्च",
+          saveEntry: "सेव एंट्री",
+          totalIncome: "कुल आय",
+          totalExpense: "कुल खर्च",
+          currentBalance: "वर्तमान शेष",
+          voiceInput: "🎤 वॉइस इनपुट",
+          descPlaceholder: "उदा., किराना",
+          unsupportedSpeech: "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है। कृपया विवरण मैन्युअल रूप से दर्ज करें।",
+          missingFields: "कृपया तारीख, विवरण और राशि भरें।",
+          invalidAmount: "कृपया शून्य से अधिक मान्य राशि दर्ज करें।",
+        },
+        speechLang: "hi-IN",
+        keywords: {
+          date: ["तारीख", "दिनांक", "डेट"],
+          description: ["विवरण", "नोट"],
+          amount: ["राशि", "अमाउंट"],
+          income: ["आय", "इनकम"],
+          expense: ["खर्च", "व्यय", "एक्सपेंस"],
+        },
+      },
+    };
 
     const moneyFormat = new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -287,6 +390,35 @@
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
+
+    function getUiText(key) {
+      return languageConfig[currentLanguage].ui[key] || languageConfig.en.ui[key] || "";
+    }
+
+    function setLanguage(languageCode) {
+      if (!languageConfig[languageCode]) {
+        languageCode = "en";
+      }
+      currentLanguage = languageCode;
+      languageSelect.value = languageCode;
+
+      labelDate.textContent = getUiText("date");
+      labelDesc.textContent = getUiText("description");
+      labelAmount.textContent = getUiText("amount");
+      labelType.textContent = getUiText("type");
+      typeIncomeOption.textContent = getUiText("income");
+      typeExpenseOption.textContent = getUiText("expense");
+      submitButton.textContent = getUiText("saveEntry");
+      voiceInputButton.textContent = getUiText("voiceInput");
+      labelTotalIncomeText.textContent = getUiText("totalIncome");
+      labelTotalExpenseText.textContent = getUiText("totalExpense");
+      labelCurrentBalanceText.textContent = getUiText("currentBalance");
+      descInput.placeholder = getUiText("descPlaceholder");
+
+      if (recognition) {
+        recognition.lang = languageConfig[currentLanguage].speechLang;
+      }
+    }
 
     function formatDateForDisplay(isoDate) {
       if (!isoDate || typeof isoDate !== "string") {
@@ -393,9 +525,10 @@
 
     function resetForm() {
       editIndex = null;
-      submitButton.textContent = "Add Entry";
+      submitButton.textContent = getUiText("saveEntry");
       form.reset();
       setToday();
+      typeInput.value = "income";
     }
 
     function highlightField(fieldElement) {
@@ -490,19 +623,53 @@
       return amountFixed.replace(/\.00$/, "");
     }
 
+    function extractCommandAndValue(spokenText) {
+      const lowered = spokenText.toLowerCase();
+      const keywords = languageConfig[currentLanguage].keywords;
+
+      const findKeywordStart = (keywordList) => {
+        for (const word of keywordList) {
+          if (lowered.startsWith(word.toLowerCase())) {
+            return word;
+          }
+        }
+        return "";
+      };
+
+      const keywordOrder = [
+        { command: "date", words: keywords.date },
+        { command: "description", words: keywords.description },
+        { command: "amount", words: keywords.amount },
+        { command: "income", words: keywords.income },
+        { command: "expense", words: keywords.expense },
+      ];
+
+      for (const item of keywordOrder) {
+        const matchedKeyword = findKeywordStart(item.words);
+        if (!matchedKeyword) {
+          continue;
+        }
+
+        const escapedKeyword = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const value = spokenText.replace(new RegExp(`^${escapedKeyword}\\b[:\- ]*`, "i"), "").trim();
+        return { command: item.command, value };
+      }
+
+      return null;
+    }
+
     function applyVoiceCommand(transcript) {
       const spokenText = transcript.trim();
       if (!spokenText) {
         return;
       }
 
-      const commandMatch = /^(date|description|amount|income|expense)\b\s*(.*)$/i.exec(spokenText);
-      if (!commandMatch) {
+      const commandInfo = extractCommandAndValue(spokenText);
+      if (!commandInfo) {
         return;
       }
 
-      const command = commandMatch[1].toLowerCase();
-      const value = commandMatch[2] ? commandMatch[2].trim() : "";
+      const { command, value } = commandInfo;
 
       if (command === "income") {
         typeInput.value = "income";
@@ -545,13 +712,13 @@
     function setupVoiceInput() {
       if (!SpeechRecognition) {
         voiceInputButton.addEventListener("click", () => {
-          alert("Voice input is not supported in this browser. Please enter details manually.");
+          alert(getUiText("unsupportedSpeech"));
         });
         return;
       }
 
       recognition = new SpeechRecognition();
-      recognition.lang = "en-IN";
+      recognition.lang = languageConfig[currentLanguage].speechLang;
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
 
@@ -569,6 +736,7 @@
 
       voiceInputButton.addEventListener("click", () => {
         try {
+          recognition.lang = languageConfig[currentLanguage].speechLang;
           recognition.start();
         } catch (error) {
           // Ignore repeated start calls safely.
@@ -585,13 +753,13 @@
       const type = typeInput.value;
 
       if (!date || !description || !amountValue) {
-        alert("Please fill out date, description, and amount.");
+        alert(getUiText("missingFields"));
         return;
       }
 
       const amountPaise = parseAmountToPaise(amountValue);
       if (amountPaise === null || amountPaise <= 0) {
-        alert("Please enter a valid amount greater than zero.");
+        alert(getUiText("invalidAmount"));
         return;
       }
 
@@ -639,7 +807,7 @@
         descInput.value = entry.description;
         amountInput.value = entry.amount;
         typeInput.value = entry.type;
-        submitButton.textContent = "Save Entry";
+        submitButton.textContent = getUiText("saveEntry");
         descInput.focus();
         return;
       }
@@ -656,8 +824,13 @@
       }
     });
 
+    languageSelect.addEventListener("change", () => {
+      setLanguage(languageSelect.value);
+    });
+
     setToday();
     setupVoiceInput();
+    setLanguage("en");
     const initialEntries = loadEntries();
     render(initialEntries);
   </script>
