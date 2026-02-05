@@ -203,14 +203,6 @@
     <div class="card">
       <form id="entry-form" class="form-grid">
         <div>
-          <label for="language-select">Language</label>
-          <select id="language-select" aria-label="Language selection">
-            <option value="en">English</option>
-            <option value="te">తెలుగు</option>
-            <option value="hi">हिंदी</option>
-          </select>
-        </div>
-        <div>
           <label for="entry-date" id="label-date">Date</label>
           <input type="date" id="entry-date" required />
         </div>
@@ -233,7 +225,7 @@
           <button type="submit" id="submit-button">Save Entry</button>
         </div>
         <div>
-          <button type="button" id="voice-input-button" class="voice-button">🎤 Voice Input</button>
+          <button type="button" id="voice-input-button" class="voice-button">🎤 Start Voice Input</button>
         </div>
       </form>
     </div>
@@ -285,103 +277,67 @@
     const totalExpenseEl = document.getElementById("total-expense");
     const currentBalanceEl = document.getElementById("current-balance");
     const voiceInputButton = document.getElementById("voice-input-button");
-    const languageSelect = document.getElementById("language-select");
-    const labelDate = document.getElementById("label-date");
-    const labelDesc = document.getElementById("label-desc");
-    const labelAmount = document.getElementById("label-amount");
-    const labelType = document.getElementById("label-type");
-    const typeIncomeOption = document.getElementById("type-income-option");
-    const typeExpenseOption = document.getElementById("type-expense-option");
-    const labelTotalIncomeText = document.getElementById("label-total-income-text");
-    const labelTotalExpenseText = document.getElementById("label-total-expense-text");
-    const labelCurrentBalanceText = document.getElementById("label-current-balance-text");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let editIndex = null;
     let recognition = null;
-    let currentLanguage = "en";
+    let isVoiceListening = false;
 
-    const languageConfig = {
-      en: {
-        ui: {
-          date: "Date",
-          description: "Description / Note",
-          amount: "Amount",
-          type: "Type",
-          income: "Income",
-          expense: "Expense",
-          saveEntry: "Save Entry",
-          totalIncome: "Total Income",
-          totalExpense: "Total Expense",
-          currentBalance: "Current Balance",
-          voiceInput: "🎤 Voice Input",
-          descPlaceholder: "e.g., Groceries",
-          unsupportedSpeech: "Voice input is not supported in this browser. Please enter details manually.",
-          missingFields: "Please fill out date, description, and amount.",
-          invalidAmount: "Please enter a valid amount greater than zero.",
-        },
-        speechLang: "en-IN",
-        keywords: {
-          date: ["date"],
-          description: ["description", "note"],
-          amount: ["amount"],
-          income: ["income"],
-          expense: ["expense"],
-        },
-      },
-      te: {
-        ui: {
-          date: "తేదీ",
-          description: "వివరణ / గమనిక",
-          amount: "మొత్తం",
-          type: "రకం",
-          income: "ఆదాయం",
-          expense: "ఖర్చు",
-          saveEntry: "సేవ్ ఎంట్రీ",
-          totalIncome: "మొత్తం ఆదాయం",
-          totalExpense: "మొత్తం ఖర్చు",
-          currentBalance: "ప్రస్తుత నిల్వ",
-          voiceInput: "🎤 వాయిస్ ఇన్పుట్",
-          descPlaceholder: "ఉదా., కిరాణా",
-          unsupportedSpeech: "ఈ బ్రౌజర్‌లో వాయిస్ ఇన్పుట్‌కు మద్దతు లేదు. దయచేసి వివరాలను మాన్యువల్‌గా నమోదు చేయండి.",
-          missingFields: "దయచేసి తేదీ, వివరణ మరియు మొత్తాన్ని నమోదు చేయండి.",
-          invalidAmount: "దయచేసి సున్నా కంటే ఎక్కువ చెల్లుబాటు అయ్యే మొత్తాన్ని నమోదు చేయండి.",
-        },
-        speechLang: "te-IN",
-        keywords: {
-          date: ["తేదీ", "డేట్"],
-          description: ["వివరణ", "గమనిక"],
-          amount: ["మొత్తం", "అమౌంట్"],
-          income: ["ఆదాయం", "ఇంకమ్"],
-          expense: ["ఖర్చు", "ఎక్స్‌పెన్స్"],
-        },
-      },
-      hi: {
-        ui: {
-          date: "तारीख",
-          description: "विवरण / नोट",
-          amount: "राशि",
-          type: "प्रकार",
-          income: "आय",
-          expense: "खर्च",
-          saveEntry: "सेव एंट्री",
-          totalIncome: "कुल आय",
-          totalExpense: "कुल खर्च",
-          currentBalance: "वर्तमान शेष",
-          voiceInput: "🎤 वॉइस इनपुट",
-          descPlaceholder: "उदा., किराना",
-          unsupportedSpeech: "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है। कृपया विवरण मैन्युअल रूप से दर्ज करें।",
-          missingFields: "कृपया तारीख, विवरण और राशि भरें।",
-          invalidAmount: "कृपया शून्य से अधिक मान्य राशि दर्ज करें।",
-        },
-        speechLang: "hi-IN",
-        keywords: {
-          date: ["तारीख", "दिनांक", "डेट"],
-          description: ["विवरण", "नोट"],
-          amount: ["राशि", "अमाउंट"],
-          income: ["आय", "इनकम"],
-          expense: ["खर्च", "व्यय", "एक्सपेंस"],
-        },
-      },
+    const FIELD_KEYWORDS = {
+      date: ["date", "తేదీ", "డేట్", "तारीख", "दिनांक", "डेट"],
+      description: ["description", "note", "వివరణ", "గమనిక", "विवरण", "नोट"],
+      amount: ["amount", "మొత్తం", "అమౌంట్", "राशि", "अमाउंट"],
+      income: ["income", "ఇంకమ్", "ఆదాయం", "इनकम", "आय"],
+      expense: ["expense", "ఎక్స్‌పెన్స్", "ఖర్చు", "एक्सपेंस", "खर्च", "व्यय"],
+    };
+
+    const DECIMAL_WORDS = ["point", "dot", "పాయింట్", "पॉइंट", "दशमलव"];
+
+    const EN_NUMBER_WORDS = {
+      zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+      ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+      seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
+      sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+    };
+
+    const TE_NUMBER_WORDS = {
+      "సున్నా": 0, "ఒకటి": 1, "ఒక్కటి": 1, "రెండు": 2, "మూడు": 3, "నాలుగు": 4,
+      "ఐదు": 5, "ఆరు": 6, "ఏడు": 7, "ఎనిమిది": 8, "తొమ్మిది": 9, "పది": 10,
+      "పదకొండు": 11, "పన్నెండు": 12, "పదమూడు": 13, "పద్నాలుగు": 14, "పదిహేను": 15,
+      "పదహారు": 16, "పదిహేడు": 17, "పద్దెనిమిది": 18, "పంతొమ్మిది": 19,
+      "ఇరవై": 20, "ముప్పై": 30, "నలభై": 40, "యాభై": 50, "అరవై": 60,
+      "డెబ్బై": 70, "ఎనభై": 80, "తొంభై": 90,
+    };
+
+    const HI_NUMBER_WORDS = {
+      "शून्य": 0, "जीरो": 0, "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5,
+      "पाँच": 5, "छह": 6, "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "ग्यारह": 11,
+      "बारह": 12, "तेरह": 13, "चौदह": 14, "पंद्रह": 15, "सोलह": 16, "सत्रह": 17,
+      "अठारह": 18, "उन्नीस": 19, "बीस": 20, "तीस": 30, "चालीस": 40, "पचास": 50,
+      "साठ": 60, "सत्तर": 70, "अस्सी": 80, "नब्बे": 90,
+    };
+
+    const SCALE_WORDS = {
+      hundred: 100,
+      "వంద": 100,
+      "వందలు": 100,
+      "सौ": 100,
+      thousand: 1000,
+      "వెయ్యి": 1000,
+      "हजार": 1000,
+      lakh: 100000,
+      "లక్ష": 100000,
+      "लाख": 100000,
+      million: 1000000,
+      crore: 10000000,
+      "కోటి": 10000000,
+      "करोड़": 10000000,
+      "करोड": 10000000,
+    };
+
+    const MONTHS = {
+      january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+      july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+      jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
     };
 
     const moneyFormat = new Intl.NumberFormat("en-IN", {
@@ -390,35 +346,6 @@
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     });
-
-    function getUiText(key) {
-      return languageConfig[currentLanguage].ui[key] || languageConfig.en.ui[key] || "";
-    }
-
-    function setLanguage(languageCode) {
-      if (!languageConfig[languageCode]) {
-        languageCode = "en";
-      }
-      currentLanguage = languageCode;
-      languageSelect.value = languageCode;
-
-      labelDate.textContent = getUiText("date");
-      labelDesc.textContent = getUiText("description");
-      labelAmount.textContent = getUiText("amount");
-      labelType.textContent = getUiText("type");
-      typeIncomeOption.textContent = getUiText("income");
-      typeExpenseOption.textContent = getUiText("expense");
-      submitButton.textContent = getUiText("saveEntry");
-      voiceInputButton.textContent = getUiText("voiceInput");
-      labelTotalIncomeText.textContent = getUiText("totalIncome");
-      labelTotalExpenseText.textContent = getUiText("totalExpense");
-      labelCurrentBalanceText.textContent = getUiText("currentBalance");
-      descInput.placeholder = getUiText("descPlaceholder");
-
-      if (recognition) {
-        recognition.lang = languageConfig[currentLanguage].speechLang;
-      }
-    }
 
     function formatDateForDisplay(isoDate) {
       if (!isoDate || typeof isoDate !== "string") {
@@ -525,7 +452,7 @@
 
     function resetForm() {
       editIndex = null;
-      submitButton.textContent = getUiText("saveEntry");
+      submitButton.textContent = "Save Entry";
       form.reset();
       setToday();
       typeInput.value = "income";
@@ -543,6 +470,153 @@
       }, 1500);
     }
 
+    function normalizeTextForMatch(input) {
+      return input
+        .toLowerCase()
+        .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function removeLeadingKeyword(spokenText, keyword) {
+      const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return spokenText.replace(new RegExp(`^${escapedKeyword}\\b[:\- ]*`, "i"), "").trim();
+    }
+
+    function parseIndianOrEnglishNumberWords(tokens) {
+      let total = 0;
+      let current = 0;
+      let found = false;
+
+      tokens.forEach((token) => {
+        if (/^\d+$/.test(token)) {
+          current += Number(token);
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token)) {
+          current += EN_NUMBER_WORDS[token];
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(TE_NUMBER_WORDS, token)) {
+          current += TE_NUMBER_WORDS[token];
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(HI_NUMBER_WORDS, token)) {
+          current += HI_NUMBER_WORDS[token];
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(SCALE_WORDS, token)) {
+          const scale = SCALE_WORDS[token];
+          found = true;
+
+          if (scale === 100) {
+            if (current === 0) {
+              current = 1;
+            }
+            current *= scale;
+          } else {
+            if (current === 0) {
+              current = 1;
+            }
+            total += current * scale;
+            current = 0;
+          }
+        }
+      });
+
+      if (!found) {
+        return null;
+      }
+      return total + current;
+    }
+
+    function parseDecimalPart(tokens) {
+      let decimalDigits = "";
+      let found = false;
+
+      tokens.forEach((token) => {
+        if (/^\d+$/.test(token)) {
+          decimalDigits += token;
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token) && EN_NUMBER_WORDS[token] < 10) {
+          decimalDigits += String(EN_NUMBER_WORDS[token]);
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(TE_NUMBER_WORDS, token) && TE_NUMBER_WORDS[token] < 10) {
+          decimalDigits += String(TE_NUMBER_WORDS[token]);
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(HI_NUMBER_WORDS, token) && HI_NUMBER_WORDS[token] < 10) {
+          decimalDigits += String(HI_NUMBER_WORDS[token]);
+          found = true;
+        }
+      });
+
+      if (!found) {
+        return "";
+      }
+      return decimalDigits;
+    }
+
+    function normalizeSpokenNumber(value) {
+      if (!value) {
+        return "";
+      }
+
+      let cleaned = normalizeTextForMatch(value)
+        .replace(/\b(and|rupees?|రూ|रुपये|रुपया)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      DECIMAL_WORDS.forEach((word) => {
+        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        cleaned = cleaned.replace(new RegExp(`\\b${escapedWord}\\b`, "gi"), " . ");
+      });
+
+      cleaned = cleaned.replace(/\s+/g, " ").trim();
+      if (!cleaned) {
+        return "";
+      }
+
+      if (/^\d+(?:\.\d+)?$/.test(cleaned)) {
+        return cleaned;
+      }
+
+      const parts = cleaned.split(".");
+      const wholeTokens = parts[0].trim().split(/\s+/).filter(Boolean);
+      const wholeValue = parseIndianOrEnglishNumberWords(wholeTokens);
+      if (wholeValue === null) {
+        return "";
+      }
+
+      if (parts.length === 1) {
+        return String(wholeValue);
+      }
+
+      const decimalTokens = parts.slice(1).join(" ").trim().split(/\s+/).filter(Boolean);
+      const decimalDigits = parseDecimalPart(decimalTokens);
+      if (!decimalDigits) {
+        return String(wholeValue);
+      }
+
+      return `${wholeValue}.${decimalDigits}`;
+    }
+
     function normalizeSpokenDate(spokenDate) {
       if (!spokenDate) {
         return "";
@@ -554,6 +628,21 @@
         .replace(/,/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+
+      const monthMatch = cleaned.split(" ").find((part) => MONTHS[part]);
+      if (monthMatch) {
+        const nums = cleaned.match(/\d+/g) || [];
+        if (nums.length >= 2) {
+          const day = Number(nums[0]);
+          const year = nums.length > 2 ? Number(nums[2]) : Number(nums[1]);
+          const month = MONTHS[monthMatch];
+          const fullYear = year < 100 ? year + 2000 : year;
+          const dateObj = new Date(fullYear, month - 1, day);
+          if (!Number.isNaN(dateObj.getTime()) && dateObj.getDate() === day && dateObj.getMonth() === month - 1) {
+            return `${fullYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          }
+        }
+      }
 
       const directDate = new Date(cleaned);
       if (!Number.isNaN(directDate.getTime())) {
@@ -598,61 +687,22 @@
       return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
 
-    function parseSpokenAmount(spokenAmount) {
-      if (!spokenAmount) {
-        return "";
-      }
-
-      const normalized = spokenAmount
-        .toLowerCase()
-        .replace(/,/g, "")
-        .replace(/\bpoint\b/g, ".")
-        .replace(/[^\d.]/g, "")
-        .replace(/\.(?=.*\.)/g, "");
-
-      if (!normalized) {
-        return "";
-      }
-
-      const amountNumber = Number(normalized);
-      if (Number.isNaN(amountNumber)) {
-        return "";
-      }
-
-      const amountFixed = amountNumber.toFixed(2);
-      return amountFixed.replace(/\.00$/, "");
-    }
-
     function extractCommandAndValue(spokenText) {
-      const lowered = spokenText.toLowerCase();
-      const keywords = languageConfig[currentLanguage].keywords;
-
-      const findKeywordStart = (keywordList) => {
-        for (const word of keywordList) {
-          if (lowered.startsWith(word.toLowerCase())) {
-            return word;
-          }
-        }
-        return "";
-      };
-
+      const lowered = normalizeTextForMatch(spokenText);
       const keywordOrder = [
-        { command: "date", words: keywords.date },
-        { command: "description", words: keywords.description },
-        { command: "amount", words: keywords.amount },
-        { command: "income", words: keywords.income },
-        { command: "expense", words: keywords.expense },
+        { command: "date", words: FIELD_KEYWORDS.date },
+        { command: "description", words: FIELD_KEYWORDS.description },
+        { command: "amount", words: FIELD_KEYWORDS.amount },
+        { command: "income", words: FIELD_KEYWORDS.income },
+        { command: "expense", words: FIELD_KEYWORDS.expense },
       ];
 
       for (const item of keywordOrder) {
-        const matchedKeyword = findKeywordStart(item.words);
-        if (!matchedKeyword) {
-          continue;
+        for (const word of item.words) {
+          if (lowered.startsWith(word.toLowerCase())) {
+            return { command: item.command, value: removeLeadingKeyword(spokenText.trim(), word) };
+          }
         }
-
-        const escapedKeyword = matchedKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const value = spokenText.replace(new RegExp(`^${escapedKeyword}\\b[:\- ]*`, "i"), "").trim();
-        return { command: item.command, value };
       }
 
       return null;
@@ -701,47 +751,71 @@
       }
 
       if (command === "amount") {
-        const parsedAmount = parseSpokenAmount(value);
-        if (parsedAmount) {
-          amountInput.value = parsedAmount;
+        const normalizedAmount = normalizeSpokenNumber(value);
+        if (normalizedAmount && /^\d+(?:\.\d+)?$/.test(normalizedAmount)) {
+          amountInput.value = normalizedAmount;
           highlightField(amountInput);
         }
       }
     }
 
+    function updateVoiceButtonText() {
+      voiceInputButton.textContent = isVoiceListening ? "🎤 Stop Voice Input" : "🎤 Start Voice Input";
+    }
+
     function setupVoiceInput() {
       if (!SpeechRecognition) {
         voiceInputButton.addEventListener("click", () => {
-          alert(getUiText("unsupportedSpeech"));
+          alert("Voice input is not supported in this browser. Please enter details manually.");
         });
         return;
       }
 
       recognition = new SpeechRecognition();
-      recognition.lang = languageConfig[currentLanguage].speechLang;
+      recognition.lang = "en-IN";
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
+      recognition.continuous = true;
 
       recognition.addEventListener("result", (event) => {
-        const result = event.results[0];
-        if (!result || !result[0] || !result[0].transcript) {
+        const latest = event.results[event.results.length - 1];
+        if (!latest || !latest[0] || !latest[0].transcript) {
           return;
         }
-        applyVoiceCommand(result[0].transcript);
+        applyVoiceCommand(latest[0].transcript);
+      });
+
+      recognition.addEventListener("end", () => {
+        if (isVoiceListening) {
+          try {
+            recognition.start();
+          } catch (error) {
+            // Ignore repeated start calls.
+          }
+        }
       });
 
       recognition.addEventListener("error", () => {
-        // Ignore speech errors safely without interrupting manual entry workflow.
+        // Keep manual workflow unaffected.
       });
 
       voiceInputButton.addEventListener("click", () => {
-        try {
-          recognition.lang = languageConfig[currentLanguage].speechLang;
-          recognition.start();
-        } catch (error) {
-          // Ignore repeated start calls safely.
+        if (!isVoiceListening) {
+          isVoiceListening = true;
+          updateVoiceButtonText();
+          try {
+            recognition.start();
+          } catch (error) {
+            // Ignore repeated start calls.
+          }
+        } else {
+          isVoiceListening = false;
+          updateVoiceButtonText();
+          recognition.stop();
         }
       });
+
+      updateVoiceButtonText();
     }
 
     form.addEventListener("submit", (event) => {
@@ -753,13 +827,13 @@
       const type = typeInput.value;
 
       if (!date || !description || !amountValue) {
-        alert(getUiText("missingFields"));
+        alert("Please fill out date, description, and amount.");
         return;
       }
 
       const amountPaise = parseAmountToPaise(amountValue);
       if (amountPaise === null || amountPaise <= 0) {
-        alert(getUiText("invalidAmount"));
+        alert("Please enter a valid amount greater than zero.");
         return;
       }
 
@@ -807,7 +881,7 @@
         descInput.value = entry.description;
         amountInput.value = entry.amount;
         typeInput.value = entry.type;
-        submitButton.textContent = getUiText("saveEntry");
+        submitButton.textContent = "Save Entry";
         descInput.focus();
         return;
       }
@@ -824,13 +898,8 @@
       }
     });
 
-    languageSelect.addEventListener("change", () => {
-      setLanguage(languageSelect.value);
-    });
-
     setToday();
     setupVoiceInput();
-    setLanguage("en");
     const initialEntries = loadEntries();
     render(initialEntries);
   </script>
