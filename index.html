@@ -151,6 +151,32 @@
       padding: 12px;
     }
 
+    .voice-button {
+      padding: 8px 10px;
+      font-size: 16px;
+    }
+
+    @keyframes voiceGlow {
+      0% {
+        box-shadow: 0 0 0 0 rgba(43, 108, 176, 0.1);
+        border-color: var(--border);
+      }
+
+      50% {
+        box-shadow: 0 0 0 4px rgba(43, 108, 176, 0.25);
+        border-color: var(--accent);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(43, 108, 176, 0.1);
+        border-color: var(--border);
+      }
+    }
+
+    .voice-highlight {
+      animation: voiceGlow 0.5s ease-in-out 3;
+    }
+
     @media (max-width: 600px) {
       body {
         font-size: 16px;
@@ -197,6 +223,9 @@
         </div>
         <div>
           <button type="submit" id="submit-button">Add Entry</button>
+        </div>
+        <div>
+          <button type="button" id="voice-input-button" class="voice-button">🎤 Voice Input</button>
         </div>
       </form>
     </div>
@@ -247,7 +276,10 @@
     const totalIncomeEl = document.getElementById("total-income");
     const totalExpenseEl = document.getElementById("total-expense");
     const currentBalanceEl = document.getElementById("current-balance");
+    const voiceInputButton = document.getElementById("voice-input-button");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let editIndex = null;
+    let recognition = null;
 
     const moneyFormat = new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -366,6 +398,184 @@
       setToday();
     }
 
+    function highlightField(fieldElement) {
+      if (!fieldElement) {
+        return;
+      }
+      fieldElement.classList.remove("voice-highlight");
+      void fieldElement.offsetWidth;
+      fieldElement.classList.add("voice-highlight");
+      setTimeout(() => {
+        fieldElement.classList.remove("voice-highlight");
+      }, 1500);
+    }
+
+    function normalizeSpokenDate(spokenDate) {
+      if (!spokenDate) {
+        return "";
+      }
+
+      const cleaned = spokenDate
+        .toLowerCase()
+        .replace(/(st|nd|rd|th)\b/g, "")
+        .replace(/,/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const directDate = new Date(cleaned);
+      if (!Number.isNaN(directDate.getTime())) {
+        const y = directDate.getFullYear();
+        const m = String(directDate.getMonth() + 1).padStart(2, "0");
+        const d = String(directDate.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      const parts = cleaned.match(/\d+/g);
+      if (!parts || parts.length < 3) {
+        return "";
+      }
+
+      let day = Number(parts[0]);
+      let month = Number(parts[1]);
+      let year = Number(parts[2]);
+
+      if (parts[0].length === 4) {
+        year = Number(parts[0]);
+        month = Number(parts[1]);
+        day = Number(parts[2]);
+      }
+
+      if (year < 100) {
+        year += 2000;
+      }
+
+      if (month < 1 || month > 12 || day < 1 || day > 31) {
+        return "";
+      }
+
+      const parsedDate = new Date(year, month - 1, day);
+      if (
+        parsedDate.getFullYear() !== year ||
+        parsedDate.getMonth() !== month - 1 ||
+        parsedDate.getDate() !== day
+      ) {
+        return "";
+      }
+
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+
+    function parseSpokenAmount(spokenAmount) {
+      if (!spokenAmount) {
+        return "";
+      }
+
+      const normalized = spokenAmount
+        .toLowerCase()
+        .replace(/,/g, "")
+        .replace(/\bpoint\b/g, ".")
+        .replace(/[^\d.]/g, "")
+        .replace(/\.(?=.*\.)/g, "");
+
+      if (!normalized) {
+        return "";
+      }
+
+      const amountNumber = Number(normalized);
+      if (Number.isNaN(amountNumber)) {
+        return "";
+      }
+
+      const amountFixed = amountNumber.toFixed(2);
+      return amountFixed.replace(/\.00$/, "");
+    }
+
+    function applyVoiceCommand(transcript) {
+      const spokenText = transcript.trim();
+      if (!spokenText) {
+        return;
+      }
+
+      const commandMatch = /^(date|description|amount|income|expense)\b\s*(.*)$/i.exec(spokenText);
+      if (!commandMatch) {
+        return;
+      }
+
+      const command = commandMatch[1].toLowerCase();
+      const value = commandMatch[2] ? commandMatch[2].trim() : "";
+
+      if (command === "income") {
+        typeInput.value = "income";
+        highlightField(typeInput);
+        return;
+      }
+
+      if (command === "expense") {
+        typeInput.value = "expense";
+        highlightField(typeInput);
+        return;
+      }
+
+      if (command === "date") {
+        const normalizedDate = normalizeSpokenDate(value);
+        if (normalizedDate) {
+          dateInput.value = normalizedDate;
+          highlightField(dateInput);
+        }
+        return;
+      }
+
+      if (command === "description") {
+        if (value) {
+          descInput.value = value;
+          highlightField(descInput);
+        }
+        return;
+      }
+
+      if (command === "amount") {
+        const parsedAmount = parseSpokenAmount(value);
+        if (parsedAmount) {
+          amountInput.value = parsedAmount;
+          highlightField(amountInput);
+        }
+      }
+    }
+
+    function setupVoiceInput() {
+      if (!SpeechRecognition) {
+        voiceInputButton.addEventListener("click", () => {
+          alert("Voice input is not supported in this browser. Please enter details manually.");
+        });
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = "en-IN";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.addEventListener("result", (event) => {
+        const result = event.results[0];
+        if (!result || !result[0] || !result[0].transcript) {
+          return;
+        }
+        applyVoiceCommand(result[0].transcript);
+      });
+
+      recognition.addEventListener("error", () => {
+        // Ignore speech errors safely without interrupting manual entry workflow.
+      });
+
+      voiceInputButton.addEventListener("click", () => {
+        try {
+          recognition.start();
+        } catch (error) {
+          // Ignore repeated start calls safely.
+        }
+      });
+    }
+
     form.addEventListener("submit", (event) => {
       event.preventDefault();
 
@@ -447,6 +657,7 @@
     });
 
     setToday();
+    setupVoiceInput();
     const initialEntries = loadEntries();
     render(initialEntries);
   </script>
