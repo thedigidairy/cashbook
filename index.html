@@ -63,6 +63,12 @@
       font-size: 16px;
     }
 
+    @keyframes labelVoiceBlink {
+      0% { color: var(--text); }
+      50% { color: var(--accent); }
+      100% { color: var(--text); }
+    }
+
     input,
     select,
     button {
@@ -174,7 +180,7 @@
     }
 
     .voice-highlight {
-      animation: voiceGlow 0.5s ease-in-out 3;
+      animation: labelVoiceBlink 0.5s ease-in-out 3;
     }
 
     @media (max-width: 600px) {
@@ -273,6 +279,10 @@
     const entriesBody = document.getElementById("entries-body");
     const emptyState = document.getElementById("empty-state");
     const submitButton = document.getElementById("submit-button");
+    const dateLabel = document.getElementById("label-date");
+    const descLabel = document.getElementById("label-desc");
+    const amountLabel = document.getElementById("label-amount");
+    const typeLabel = document.getElementById("label-type");
     const totalIncomeEl = document.getElementById("total-income");
     const totalExpenseEl = document.getElementById("total-expense");
     const currentBalanceEl = document.getElementById("current-balance");
@@ -283,11 +293,12 @@
     let isVoiceListening = false;
 
     const FIELD_KEYWORDS = {
-      date: ["date", "తేదీ", "డేట్", "तारीख", "दिनांक", "डेट"],
-      description: ["description", "note", "వివరణ", "గమనిక", "विवरण", "नोट"],
-      amount: ["amount", "మొత్తం", "అమౌంట్", "राशि", "अमाउंट"],
-      income: ["income", "ఇంకమ్", "ఆదాయం", "इनकम", "आय"],
-      expense: ["expense", "ఎక్స్‌పెన్స్", "ఖర్చు", "एक्सपेंस", "खर्च", "व्यय"],
+      date: ["date"],
+      description: ["description"],
+      amount: ["amount"],
+      income: ["income"],
+      expense: ["expense"],
+      saveEntry: ["save entry"],
     };
 
     const DECIMAL_WORDS = ["point", "dot", "పాయింట్", "पॉइंट", "दशमलव"];
@@ -297,6 +308,7 @@
       ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
       seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50,
       sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+      naught: 0, oh: 0,
     };
 
     const TE_NUMBER_WORDS = {
@@ -314,6 +326,14 @@
       "बारह": 12, "तेरह": 13, "चौदह": 14, "पंद्रह": 15, "सोलह": 16, "सत्रह": 17,
       "अठारह": 18, "उन्नीस": 19, "बीस": 20, "तीस": 30, "चालीस": 40, "पचास": 50,
       "साठ": 60, "सत्तर": 70, "अस्सी": 80, "नब्बे": 90,
+      do: 2,
+    };
+
+
+    const ROMAN_NUMBER_WORDS = {
+      okati: 1, okkati: 1, rendu: 2, moodu: 3, nalugu: 4, aidu: 5, aaru: 6, edu: 7, enimidi: 8, tommidi: 9,
+      padi: 10, iravai: 20, muppai: 30, nalabhai: 40, yabhai: 50, aravai: 60, debbai: 70, enabhai: 80, tombhai: 90,
+      do: 2,
     };
 
     const SCALE_WORDS = {
@@ -321,6 +341,10 @@
       "వంద": 100,
       "వందలు": 100,
       "सौ": 100,
+      sau: 100,
+      vandha: 100,
+      vandalu: 100,
+      vandu: 100,
       thousand: 1000,
       "వెయ్యి": 1000,
       "हजार": 1000,
@@ -513,6 +537,12 @@
           return;
         }
 
+        if (Object.prototype.hasOwnProperty.call(ROMAN_NUMBER_WORDS, token)) {
+          current += ROMAN_NUMBER_WORDS[token];
+          found = true;
+          return;
+        }
+
         if (Object.prototype.hasOwnProperty.call(SCALE_WORDS, token)) {
           const scale = SCALE_WORDS[token];
           found = true;
@@ -563,6 +593,12 @@
 
         if (Object.prototype.hasOwnProperty.call(HI_NUMBER_WORDS, token) && HI_NUMBER_WORDS[token] < 10) {
           decimalDigits += String(HI_NUMBER_WORDS[token]);
+          found = true;
+          return;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(ROMAN_NUMBER_WORDS, token) && ROMAN_NUMBER_WORDS[token] < 10) {
+          decimalDigits += String(ROMAN_NUMBER_WORDS[token]);
           found = true;
         }
       });
@@ -689,6 +725,13 @@
 
     function extractCommandAndValue(spokenText) {
       const lowered = normalizeTextForMatch(spokenText);
+      if (lowered.startsWith(FIELD_KEYWORDS.saveEntry[0])) {
+        return {
+          command: "saveEntry",
+          value: removeLeadingKeyword(spokenText.trim(), FIELD_KEYWORDS.saveEntry[0]),
+        };
+      }
+
       const keywordOrder = [
         { command: "date", words: FIELD_KEYWORDS.date },
         { command: "description", words: FIELD_KEYWORDS.description },
@@ -708,6 +751,18 @@
       return null;
     }
 
+    function canSaveWithCurrentValues() {
+      const date = dateInput.value.trim();
+      const description = descInput.value.trim();
+      const amountValue = amountInput.value;
+      if (!date || !description || !amountValue) {
+        return false;
+      }
+
+      const amountPaise = parseAmountToPaise(amountValue);
+      return amountPaise !== null && amountPaise > 0;
+    }
+
     function applyVoiceCommand(transcript) {
       const spokenText = transcript.trim();
       if (!spokenText) {
@@ -721,15 +776,22 @@
 
       const { command, value } = commandInfo;
 
+      if (command === "saveEntry") {
+        if (canSaveWithCurrentValues()) {
+          submitButton.click();
+        }
+        return;
+      }
+
       if (command === "income") {
         typeInput.value = "income";
-        highlightField(typeInput);
+        highlightField(typeLabel);
         return;
       }
 
       if (command === "expense") {
         typeInput.value = "expense";
-        highlightField(typeInput);
+        highlightField(typeLabel);
         return;
       }
 
@@ -737,7 +799,7 @@
         const normalizedDate = normalizeSpokenDate(value);
         if (normalizedDate) {
           dateInput.value = normalizedDate;
-          highlightField(dateInput);
+          highlightField(dateLabel);
         }
         return;
       }
@@ -745,7 +807,7 @@
       if (command === "description") {
         if (value) {
           descInput.value = value;
-          highlightField(descInput);
+          highlightField(descLabel);
         }
         return;
       }
@@ -754,7 +816,7 @@
         const normalizedAmount = normalizeSpokenNumber(value);
         if (normalizedAmount && /^\d+(?:\.\d+)?$/.test(normalizedAmount)) {
           amountInput.value = normalizedAmount;
-          highlightField(amountInput);
+          highlightField(amountLabel);
         }
       }
     }
@@ -786,13 +848,8 @@
       });
 
       recognition.addEventListener("end", () => {
-        if (isVoiceListening) {
-          try {
-            recognition.start();
-          } catch (error) {
-            // Ignore repeated start calls.
-          }
-        }
+        isVoiceListening = false;
+        updateVoiceButtonText();
       });
 
       recognition.addEventListener("error", () => {
