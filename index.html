@@ -300,10 +300,10 @@
     let editIndex = null;
     let recognition = null;
     let isVoiceListening = false;
-    let activeVoiceField = null;
+    let activeVoiceField = "amount";
     let voiceFillTimeout = null;
 
-    const DECIMAL_WORDS = ["point", "dot", "పాయింట్", "पॉइंट", "दशमलव"];
+    const DECIMAL_WORDS = ["point"];
 
     const EN_NUMBER_WORDS = {
       zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
@@ -497,92 +497,51 @@
     }
 
     function clearFieldVoiceStyles() {
-      [dateInput, descInput, amountInput, typeInput].forEach((field) => {
+      [amountInput].forEach((field) => {
         field.classList.remove("voice-active-field", "voice-listening-field");
       });
-      [dateLabel, descLabel, amountLabel, typeLabel].forEach((label) => {
+      [amountLabel].forEach((label) => {
         label.classList.remove("voice-highlight");
       });
     }
 
     function setActiveVoiceField(fieldKey) {
-      activeVoiceField = fieldKey;
+      activeVoiceField = fieldKey === "amount" ? "amount" : null;
       clearFieldVoiceStyles();
 
-      if (!fieldKey) {
+      if (activeVoiceField !== "amount") {
         return;
       }
 
-      const fieldMap = {
-        date: { input: dateInput, label: dateLabel },
-        description: { input: descInput, label: descLabel },
-        amount: { input: amountInput, label: amountLabel },
-        type: { input: typeInput, label: typeLabel },
-      };
-
-      const selected = fieldMap[fieldKey];
-      if (!selected) {
-        return;
-      }
-
-      selected.input.classList.add("voice-active-field");
-      selected.label.classList.add("voice-highlight");
+      amountInput.classList.add("voice-active-field");
+      amountLabel.classList.add("voice-highlight");
     }
 
     function markListeningState(active) {
-      [dateInput, descInput, amountInput, typeInput].forEach((field) => {
-        field.classList.remove("voice-listening-field");
-      });
-      if (!active || !activeVoiceField) {
+      amountInput.classList.remove("voice-listening-field");
+      if (!active || activeVoiceField !== "amount") {
         return;
       }
-
-      const fieldMap = {
-        date: dateInput,
-        description: descInput,
-        amount: amountInput,
-        type: typeInput,
-      };
-
-      const selected = fieldMap[activeVoiceField];
-      if (selected) {
-        selected.classList.add("voice-listening-field");
-      }
+      amountInput.classList.add("voice-listening-field");
     }
 
     function showVoiceFillFeedback(fieldKey) {
-      const labelMap = {
-        date: dateLabel,
-        description: descLabel,
-        amount: amountLabel,
-        type: typeLabel,
-      };
-
-      const inputMap = {
-        date: dateInput,
-        description: descInput,
-        amount: amountInput,
-        type: typeInput,
-      };
-
-      const label = labelMap[fieldKey];
-      const input = inputMap[fieldKey];
-      if (!label || !input) {
+      if (fieldKey !== "amount") {
         return;
       }
 
       markListeningState(false);
-      highlightField(label);
-      input.classList.add("voice-active-field");
+      highlightField(amountLabel);
+      amountInput.classList.add("voice-active-field");
 
       if (voiceFillTimeout) {
         clearTimeout(voiceFillTimeout);
       }
 
       voiceFillTimeout = setTimeout(() => {
-        input.classList.remove("voice-active-field");
-        if (activeVoiceField === fieldKey) {
-          input.classList.add("voice-active-field");
+        amountInput.classList.remove("voice-active-field");
+        if (activeVoiceField === "amount") {
+          amountInput.classList.add("voice-active-field");
         }
       }, 1500);
     }
@@ -697,48 +656,180 @@
       return decimalDigits;
     }
 
+    function parseStrictSpokenInteger(tokens) {
+      if (!tokens.length) {
+        return null;
+      }
+
+      if (tokens.length === 1 && /^\d+$/.test(tokens[0])) {
+        return Number(tokens[0]);
+      }
+
+      let total = 0;
+      let current = 0;
+      let hasWord = false;
+
+      for (const token of tokens) {
+        if (!Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token)) {
+          return null;
+        }
+
+        const value = EN_NUMBER_WORDS[token];
+        hasWord = true;
+
+        if (value === 100) {
+          if (current === 0) {
+            current = 1;
+          }
+          current *= 100;
+          continue;
+        }
+
+        if (value >= 20 && value % 10 === 0) {
+          current += value;
+          continue;
+        }
+
+        current += value;
+      }
+
+      total += current;
+      if (!hasWord || total <= 0) {
+        return null;
+      }
+
+      return total;
+    }
+
+    function parseStrictDecimalDigits(tokens) {
+      if (!tokens.length) {
+        return "";
+      }
+
+      let decimalDigits = "";
+      for (const token of tokens) {
+        if (/^\d+$/.test(token)) {
+          decimalDigits += token;
+          continue;
+        }
+
+        if (!Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token)) {
+          return "";
+        }
+
+        const value = EN_NUMBER_WORDS[token];
+        if (value < 0 || value > 9) {
+          return "";
+        }
+
+        decimalDigits += String(value);
+      }
+
+      return decimalDigits;
+    }
+
     function normalizeSpokenNumber(value) {
       if (!value) {
         return "";
       }
 
       let cleaned = normalizeTextForMatch(value)
-        .replace(/\b(and|rupees?|రూ|रुपये|रुपया)\b/g, " ")
+        .replace(/\b(and|rupees?)\b/g, " ")
         .replace(/\s+/g, " ")
         .trim();
 
-      DECIMAL_WORDS.forEach((word) => {
-        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        cleaned = cleaned.replace(new RegExp(`\\b${escapedWord}\\b`, "gi"), " . ");
-      });
-
-      cleaned = cleaned.replace(/\s+/g, " ").trim();
       if (!cleaned) {
         return "";
       }
 
-      if (/^\d+(?:\.\d+)?$/.test(cleaned)) {
-        return cleaned;
-      }
-
-      const parts = cleaned.split(".");
-      const wholeTokens = parts[0].trim().split(/\s+/).filter(Boolean);
-      const wholeValue = parseIndianOrEnglishNumberWords(wholeTokens);
-      if (wholeValue === null) {
+      const decimalMatches = cleaned.match(/\bpoint\b/g);
+      if (decimalMatches && decimalMatches.length > 1) {
         return "";
       }
 
-      if (parts.length === 1) {
-        return String(wholeValue);
+      let integerPhrase = cleaned;
+      let decimalPhrase = "";
+      const pointIndex = cleaned.indexOf(" point ");
+      if (pointIndex >= 0) {
+        integerPhrase = cleaned.slice(0, pointIndex).trim();
+        decimalPhrase = cleaned.slice(pointIndex + 7).trim();
+      } else if (cleaned.startsWith("point ") || cleaned.endsWith(" point")) {
+        return "";
       }
 
-      const decimalTokens = parts.slice(1).join(" ").trim().split(/\s+/).filter(Boolean);
-      const decimalDigits = parseDecimalPart(decimalTokens);
+      if (!integerPhrase) {
+        return "";
+      }
+
+      const tokens = integerPhrase.split(/\s+/).filter(Boolean);
+      if (!tokens.length) {
+        return "";
+      }
+
+      const units = [
+        { key: "crore", multiplier: 10000000, rank: 3 },
+        { key: "lakh", multiplier: 100000, rank: 2 },
+        { key: "thousand", multiplier: 1000, rank: 1 },
+      ];
+
+      const unitMap = Object.fromEntries(units.map((unit) => [unit.key, unit]));
+      let total = 0;
+      let foundUnit = false;
+      let lastRank = Infinity;
+      const seen = new Set();
+      let i = 0;
+
+      while (i < tokens.length) {
+        let unitIndex = -1;
+        for (let j = i; j < tokens.length; j += 1) {
+          if (unitMap[tokens[j]]) {
+            unitIndex = j;
+            break;
+          }
+        }
+
+        if (unitIndex === -1) {
+          return "";
+        }
+
+        const numberTokens = tokens.slice(i, unitIndex);
+        const unitToken = tokens[unitIndex];
+        if (!numberTokens.length) {
+          return "";
+        }
+
+        const numberValue = parseStrictSpokenInteger(numberTokens);
+        if (numberValue === null) {
+          return "";
+        }
+
+        const unit = unitMap[unitToken];
+        if (seen.has(unit.key) || unit.rank >= lastRank) {
+          return "";
+        }
+
+        total += numberValue * unit.multiplier;
+        seen.add(unit.key);
+        lastRank = unit.rank;
+        foundUnit = true;
+        i = unitIndex + 1;
+      }
+
+      if (!foundUnit) {
+        return "";
+      }
+
+      if (!decimalPhrase) {
+        return String(total);
+      }
+
+      const decimalTokens = decimalPhrase.split(/\s+/).filter(Boolean);
+      const decimalDigits = parseStrictDecimalDigits(decimalTokens);
       if (!decimalDigits) {
-        return String(wholeValue);
+        return "";
       }
 
-      return `${wholeValue}.${decimalDigits}`;
+      return `${total}.${decimalDigits}`;
     }
 
     function normalizeSpokenDate(spokenDate) {
@@ -813,44 +904,18 @@
 
     function applyVoiceCommand(transcript) {
       const spokenText = transcript.trim();
-      if (!spokenText || !activeVoiceField) {
+      if (!spokenText) {
         return;
       }
 
-      if (activeVoiceField === "date") {
-        const normalizedDate = normalizeSpokenDate(spokenText);
-        if (normalizedDate) {
-          dateInput.value = normalizedDate;
-          showVoiceFillFeedback("date");
-        }
+      const normalizedAmount = normalizeSpokenNumber(spokenText);
+      if (normalizedAmount && /^\d+(?:\.\d+)?$/.test(normalizedAmount)) {
+        amountInput.value = normalizedAmount;
+        showVoiceFillFeedback("amount");
         return;
       }
 
-      if (activeVoiceField === "description") {
-        descInput.value = spokenText;
-        showVoiceFillFeedback("description");
-        return;
-      }
-
-      if (activeVoiceField === "amount") {
-        const normalizedAmount = normalizeSpokenNumber(spokenText);
-        if (normalizedAmount && /^\d+(?:\.\d+)?$/.test(normalizedAmount)) {
-          amountInput.value = normalizedAmount;
-          showVoiceFillFeedback("amount");
-        }
-        return;
-      }
-
-      if (activeVoiceField === "type") {
-        const lowered = normalizeTextForMatch(spokenText);
-        if (lowered === "income") {
-          typeInput.value = "income";
-          showVoiceFillFeedback("type");
-        } else if (lowered === "expense") {
-          typeInput.value = "expense";
-          showVoiceFillFeedback("type");
-        }
-      }
+      amountInput.value = "";
     }
 
     function updateVoiceButtonText() {
@@ -881,6 +946,8 @@
 
       recognition.addEventListener("start", () => {
         isVoiceListening = true;
+        setActiveVoiceField("amount");
+        amountInput.focus();
         markListeningState(true);
       });
 
@@ -897,10 +964,6 @@
       });
 
       voiceInputButton.addEventListener("click", () => {
-        if (!activeVoiceField) {
-          alert("Select a field first, then tap Voice Input.");
-          return;
-        }
         if (isVoiceListening) {
           recognition.stop();
           return;
@@ -913,18 +976,7 @@
         }
       });
 
-      const fieldSelectionHandlers = [
-        { element: dateInput, key: "date" },
-        { element: descInput, key: "description" },
-        { element: amountInput, key: "amount" },
-        { element: typeInput, key: "type" },
-      ];
-
-      fieldSelectionHandlers.forEach(({ element, key }) => {
-        element.addEventListener("focus", () => setActiveVoiceField(key));
-        element.addEventListener("click", () => setActiveVoiceField(key));
-      });
-
+      setActiveVoiceField("amount");
       updateVoiceButtonText();
     }
 
