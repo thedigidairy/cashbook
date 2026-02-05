@@ -303,7 +303,7 @@
     let activeVoiceField = "amount";
     let voiceFillTimeout = null;
 
-    const DECIMAL_WORDS = ["point"];
+    const DECIMAL_WORDS = ["point", "dot", "decimal"];
 
     const EN_NUMBER_WORDS = {
       zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
@@ -496,52 +496,64 @@
       }, 1500);
     }
 
+    const VOICE_FIELD_MAP = {
+      date: { input: dateInput, label: dateLabel },
+      description: { input: descInput, label: descLabel },
+      amount: { input: amountInput, label: amountLabel },
+      income: { input: typeInput, label: typeLabel },
+      expense: { input: typeInput, label: typeLabel },
+    };
+
     function clearFieldVoiceStyles() {
-      [amountInput].forEach((field) => {
-        field.classList.remove("voice-active-field", "voice-listening-field");
-      });
-      [amountLabel].forEach((label) => {
+      Object.values(VOICE_FIELD_MAP).forEach(({ input, label }) => {
+        input.classList.remove("voice-active-field", "voice-listening-field");
         label.classList.remove("voice-highlight");
       });
     }
 
     function setActiveVoiceField(fieldKey) {
-      activeVoiceField = fieldKey === "amount" ? "amount" : null;
+      activeVoiceField = Object.prototype.hasOwnProperty.call(VOICE_FIELD_MAP, fieldKey) ? fieldKey : null;
       clearFieldVoiceStyles();
 
-      if (activeVoiceField !== "amount") {
+      if (!activeVoiceField) {
         return;
       }
 
-      amountInput.classList.add("voice-active-field");
-      amountLabel.classList.add("voice-highlight");
+      const activeField = VOICE_FIELD_MAP[activeVoiceField];
+      activeField.input.classList.add("voice-active-field");
+      activeField.label.classList.add("voice-highlight");
     }
 
     function markListeningState(active) {
-      amountInput.classList.remove("voice-listening-field");
-      if (!active || activeVoiceField !== "amount") {
+      Object.values(VOICE_FIELD_MAP).forEach(({ input }) => {
+        input.classList.remove("voice-listening-field");
+      });
+
+      if (!active || !activeVoiceField) {
         return;
       }
-      amountInput.classList.add("voice-listening-field");
+
+      VOICE_FIELD_MAP[activeVoiceField].input.classList.add("voice-listening-field");
     }
 
     function showVoiceFillFeedback(fieldKey) {
-      if (fieldKey !== "amount") {
+      if (!Object.prototype.hasOwnProperty.call(VOICE_FIELD_MAP, fieldKey)) {
         return;
       }
 
       markListeningState(false);
-      highlightField(amountLabel);
-      amountInput.classList.add("voice-active-field");
+      const field = VOICE_FIELD_MAP[fieldKey];
+      highlightField(field.label);
+      field.input.classList.add("voice-active-field");
 
       if (voiceFillTimeout) {
         clearTimeout(voiceFillTimeout);
       }
 
       voiceFillTimeout = setTimeout(() => {
-        amountInput.classList.remove("voice-active-field");
-        if (activeVoiceField === "amount") {
-          amountInput.classList.add("voice-active-field");
+        field.input.classList.remove("voice-active-field");
+        if (activeVoiceField === fieldKey) {
+          field.input.classList.add("voice-active-field");
         }
       }, 1500);
     }
@@ -693,19 +705,19 @@
             continue;
           }
 
-          if (!Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token)) {
-            return null;
-          }
-
-          const mapped = EN_NUMBER_WORDS[token];
-          if (mapped === 100) {
+          if (token === "hundred") {
             if (value === 0) {
               value = 1;
             }
             value *= 100;
-          } else {
-            value += mapped;
+            continue;
           }
+
+          if (!Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token)) {
+            return null;
+          }
+
+          value += EN_NUMBER_WORDS[token];
         }
 
         return Number.isFinite(value) ? value : null;
@@ -723,11 +735,17 @@
             continue;
           }
 
-          if (!Object.prototype.hasOwnProperty.call(digitWords, token)) {
-            return null;
+          if (Object.prototype.hasOwnProperty.call(digitWords, token)) {
+            digits += digitWords[token];
+            continue;
           }
 
-          digits += digitWords[token];
+          if (Object.prototype.hasOwnProperty.call(EN_NUMBER_WORDS, token) && EN_NUMBER_WORDS[token] < 10) {
+            digits += String(EN_NUMBER_WORDS[token]);
+            continue;
+          }
+
+          return null;
         }
 
         return digits || null;
@@ -735,7 +753,7 @@
 
       const cleaned = normalizeTextForMatch(text)
         .replace(/\b(and|rupees?)\b/g, " ")
-        .replace(/\b(point|dot|decimal)\b/g, " . ")
+        .replace(new RegExp(`\\b(${DECIMAL_WORDS.join("|")})\\b`, "g"), " . ")
         .replace(/\s+/g, " ")
         .trim();
 
@@ -889,17 +907,78 @@
       return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
 
+    function detectCommand(text) {
+      const rawText = (text || "").trim();
+      const loweredText = rawText.toLowerCase();
+      const paddedText = ` ${loweredText}`;
+
+      if (loweredText.startsWith("date ")) {
+        return { command: "date", value: rawText.slice(5).trim() };
+      }
+
+      if (loweredText.startsWith("description ")) {
+        return { command: "description", value: rawText.slice(12).trim() };
+      }
+
+      if (loweredText.startsWith("amount ")) {
+        return { command: "amount", value: rawText.slice(7).trim() };
+      }
+
+      if (paddedText.includes(" income")) {
+        return { command: "income", value: rawText.replace(/\bincome\b/gi, "").trim() };
+      }
+
+      if (paddedText.includes(" expense")) {
+        return { command: "expense", value: rawText.replace(/\bexpense\b/gi, "").trim() };
+      }
+
+      return { command: null, value: rawText };
+    }
+
     function applyVoiceCommand(transcript) {
-      const spokenText = transcript.trim();
+      const spokenText = (transcript || "").trim();
       if (!spokenText) {
         return;
       }
 
-      const parsedAmount = parseSpokenAmount(spokenText);
-      if (parsedAmount !== null) {
+      const { command, value } = detectCommand(spokenText);
+
+      if (command === "date") {
+        const normalizedDate = normalizeSpokenDate(value);
+        if (!normalizedDate) {
+          return;
+        }
+        dateInput.value = normalizedDate;
+        setActiveVoiceField("date");
+        showVoiceFillFeedback("date");
+        return;
+      }
+
+      if (command === "description") {
+        if (!value) {
+          return;
+        }
+        descInput.value = value;
+        setActiveVoiceField("description");
+        showVoiceFillFeedback("description");
+        return;
+      }
+
+      if (command === "amount") {
+        const parsedAmount = parseSpokenAmount(value);
+        if (parsedAmount === null) {
+          return;
+        }
         amountInput.value = String(parsedAmount);
+        setActiveVoiceField("amount");
         showVoiceFillFeedback("amount");
         return;
+      }
+
+      if (command === "income" || command === "expense") {
+        typeInput.value = command;
+        setActiveVoiceField(command);
+        showVoiceFillFeedback(command);
       }
     }
 
@@ -931,8 +1010,7 @@
 
       recognition.addEventListener("start", () => {
         isVoiceListening = true;
-        setActiveVoiceField("amount");
-        amountInput.focus();
+        setActiveVoiceField(null);
         markListeningState(true);
       });
 
@@ -961,7 +1039,7 @@
         }
       });
 
-      setActiveVoiceField("amount");
+      setActiveVoiceField(null);
       updateVoiceButtonText();
     }
 
