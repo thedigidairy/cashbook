@@ -183,6 +183,15 @@
       animation: labelVoiceBlink 0.5s ease-in-out 3;
     }
 
+    .voice-active-field {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.2);
+    }
+
+    .voice-listening-field {
+      animation: voiceGlow 0.7s ease-in-out infinite;
+    }
+
     @media (max-width: 600px) {
       body {
         font-size: 16px;
@@ -231,7 +240,7 @@
           <button type="submit" id="submit-button">Save Entry</button>
         </div>
         <div>
-          <button type="button" id="voice-input-button" class="voice-button">🎤 Start Voice Input</button>
+          <button type="button" id="voice-input-button" class="voice-button">🎤 Voice Input</button>
         </div>
       </form>
     </div>
@@ -291,15 +300,8 @@
     let editIndex = null;
     let recognition = null;
     let isVoiceListening = false;
-
-    const FIELD_KEYWORDS = {
-      date: ["date"],
-      description: ["description"],
-      amount: ["amount"],
-      income: ["income"],
-      expense: ["expense"],
-      saveEntry: ["save entry"],
-    };
+    let activeVoiceField = null;
+    let voiceFillTimeout = null;
 
     const DECIMAL_WORDS = ["point", "dot", "పాయింట్", "पॉइंट", "दशमलव"];
 
@@ -494,17 +496,103 @@
       }, 1500);
     }
 
+    function clearFieldVoiceStyles() {
+      [dateInput, descInput, amountInput, typeInput].forEach((field) => {
+        field.classList.remove("voice-active-field", "voice-listening-field");
+      });
+      [dateLabel, descLabel, amountLabel, typeLabel].forEach((label) => {
+        label.classList.remove("voice-highlight");
+      });
+    }
+
+    function setActiveVoiceField(fieldKey) {
+      activeVoiceField = fieldKey;
+      clearFieldVoiceStyles();
+
+      if (!fieldKey) {
+        return;
+      }
+
+      const fieldMap = {
+        date: { input: dateInput, label: dateLabel },
+        description: { input: descInput, label: descLabel },
+        amount: { input: amountInput, label: amountLabel },
+        type: { input: typeInput, label: typeLabel },
+      };
+
+      const selected = fieldMap[fieldKey];
+      if (!selected) {
+        return;
+      }
+
+      selected.input.classList.add("voice-active-field");
+      selected.label.classList.add("voice-highlight");
+    }
+
+    function markListeningState(active) {
+      [dateInput, descInput, amountInput, typeInput].forEach((field) => {
+        field.classList.remove("voice-listening-field");
+      });
+      if (!active || !activeVoiceField) {
+        return;
+      }
+
+      const fieldMap = {
+        date: dateInput,
+        description: descInput,
+        amount: amountInput,
+        type: typeInput,
+      };
+
+      const selected = fieldMap[activeVoiceField];
+      if (selected) {
+        selected.classList.add("voice-listening-field");
+      }
+    }
+
+    function showVoiceFillFeedback(fieldKey) {
+      const labelMap = {
+        date: dateLabel,
+        description: descLabel,
+        amount: amountLabel,
+        type: typeLabel,
+      };
+
+      const inputMap = {
+        date: dateInput,
+        description: descInput,
+        amount: amountInput,
+        type: typeInput,
+      };
+
+      const label = labelMap[fieldKey];
+      const input = inputMap[fieldKey];
+      if (!label || !input) {
+        return;
+      }
+
+      markListeningState(false);
+      highlightField(label);
+      input.classList.add("voice-active-field");
+
+      if (voiceFillTimeout) {
+        clearTimeout(voiceFillTimeout);
+      }
+
+      voiceFillTimeout = setTimeout(() => {
+        input.classList.remove("voice-active-field");
+        if (activeVoiceField === fieldKey) {
+          input.classList.add("voice-active-field");
+        }
+      }, 1500);
+    }
+
     function normalizeTextForMatch(input) {
       return input
         .toLowerCase()
         .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
-    }
-
-    function removeLeadingKeyword(spokenText, keyword) {
-      const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      return spokenText.replace(new RegExp(`^${escapedKeyword}\\b[:\- ]*`, "i"), "").trim();
     }
 
     function parseIndianOrEnglishNumberWords(tokens) {
@@ -723,106 +811,50 @@
       return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
 
-    function extractCommandAndValue(spokenText) {
-      const lowered = normalizeTextForMatch(spokenText);
-      if (lowered.startsWith(FIELD_KEYWORDS.saveEntry[0])) {
-        return {
-          command: "saveEntry",
-          value: removeLeadingKeyword(spokenText.trim(), FIELD_KEYWORDS.saveEntry[0]),
-        };
-      }
-
-      const keywordOrder = [
-        { command: "date", words: FIELD_KEYWORDS.date },
-        { command: "description", words: FIELD_KEYWORDS.description },
-        { command: "amount", words: FIELD_KEYWORDS.amount },
-        { command: "income", words: FIELD_KEYWORDS.income },
-        { command: "expense", words: FIELD_KEYWORDS.expense },
-      ];
-
-      for (const item of keywordOrder) {
-        for (const word of item.words) {
-          if (lowered.startsWith(word.toLowerCase())) {
-            return { command: item.command, value: removeLeadingKeyword(spokenText.trim(), word) };
-          }
-        }
-      }
-
-      return null;
-    }
-
-    function canSaveWithCurrentValues() {
-      const date = dateInput.value.trim();
-      const description = descInput.value.trim();
-      const amountValue = amountInput.value;
-      if (!date || !description || !amountValue) {
-        return false;
-      }
-
-      const amountPaise = parseAmountToPaise(amountValue);
-      return amountPaise !== null && amountPaise > 0;
-    }
-
     function applyVoiceCommand(transcript) {
       const spokenText = transcript.trim();
-      if (!spokenText) {
+      if (!spokenText || !activeVoiceField) {
         return;
       }
 
-      const commandInfo = extractCommandAndValue(spokenText);
-      if (!commandInfo) {
-        return;
-      }
-
-      const { command, value } = commandInfo;
-
-      if (command === "saveEntry") {
-        if (canSaveWithCurrentValues()) {
-          submitButton.click();
-        }
-        return;
-      }
-
-      if (command === "income") {
-        typeInput.value = "income";
-        highlightField(typeLabel);
-        return;
-      }
-
-      if (command === "expense") {
-        typeInput.value = "expense";
-        highlightField(typeLabel);
-        return;
-      }
-
-      if (command === "date") {
-        const normalizedDate = normalizeSpokenDate(value);
+      if (activeVoiceField === "date") {
+        const normalizedDate = normalizeSpokenDate(spokenText);
         if (normalizedDate) {
           dateInput.value = normalizedDate;
-          highlightField(dateLabel);
+          showVoiceFillFeedback("date");
         }
         return;
       }
 
-      if (command === "description") {
-        if (value) {
-          descInput.value = value;
-          highlightField(descLabel);
-        }
+      if (activeVoiceField === "description") {
+        descInput.value = spokenText;
+        showVoiceFillFeedback("description");
         return;
       }
 
-      if (command === "amount") {
-        const normalizedAmount = normalizeSpokenNumber(value);
+      if (activeVoiceField === "amount") {
+        const normalizedAmount = normalizeSpokenNumber(spokenText);
         if (normalizedAmount && /^\d+(?:\.\d+)?$/.test(normalizedAmount)) {
           amountInput.value = normalizedAmount;
-          highlightField(amountLabel);
+          showVoiceFillFeedback("amount");
+        }
+        return;
+      }
+
+      if (activeVoiceField === "type") {
+        const lowered = normalizeTextForMatch(spokenText);
+        if (lowered === "income") {
+          typeInput.value = "income";
+          showVoiceFillFeedback("type");
+        } else if (lowered === "expense") {
+          typeInput.value = "expense";
+          showVoiceFillFeedback("type");
         }
       }
     }
 
     function updateVoiceButtonText() {
-      voiceInputButton.textContent = isVoiceListening ? "🎤 Stop Voice Input" : "🎤 Start Voice Input";
+      voiceInputButton.textContent = "🎤 Voice Input";
     }
 
     function setupVoiceInput() {
@@ -837,7 +869,7 @@
       recognition.lang = "en-IN";
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
-      recognition.continuous = true;
+      recognition.continuous = false;
 
       recognition.addEventListener("result", (event) => {
         const latest = event.results[event.results.length - 1];
@@ -847,29 +879,50 @@
         applyVoiceCommand(latest[0].transcript);
       });
 
+      recognition.addEventListener("start", () => {
+        isVoiceListening = true;
+        markListeningState(true);
+      });
+
       recognition.addEventListener("end", () => {
         isVoiceListening = false;
+        markListeningState(false);
         updateVoiceButtonText();
       });
 
       recognition.addEventListener("error", () => {
-        // Keep manual workflow unaffected.
+        isVoiceListening = false;
+        markListeningState(false);
+        updateVoiceButtonText();
       });
 
       voiceInputButton.addEventListener("click", () => {
-        if (!isVoiceListening) {
-          isVoiceListening = true;
-          updateVoiceButtonText();
-          try {
-            recognition.start();
-          } catch (error) {
-            // Ignore repeated start calls.
-          }
-        } else {
-          isVoiceListening = false;
-          updateVoiceButtonText();
-          recognition.stop();
+        if (!activeVoiceField) {
+          alert("Select a field first, then tap Voice Input.");
+          return;
         }
+        if (isVoiceListening) {
+          recognition.stop();
+          return;
+        }
+        try {
+          recognition.lang = "en-IN";
+          recognition.start();
+        } catch (error) {
+          // Ignore repeated start calls.
+        }
+      });
+
+      const fieldSelectionHandlers = [
+        { element: dateInput, key: "date" },
+        { element: descInput, key: "description" },
+        { element: amountInput, key: "amount" },
+        { element: typeInput, key: "type" },
+      ];
+
+      fieldSelectionHandlers.forEach(({ element, key }) => {
+        element.addEventListener("focus", () => setActiveVoiceField(key));
+        element.addEventListener("click", () => setActiveVoiceField(key));
       });
 
       updateVoiceButtonText();
